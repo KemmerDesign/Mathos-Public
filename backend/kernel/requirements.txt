@@ -1,0 +1,7 @@
+# Dependencias del sistema para compilar el kernel C++
+sudo apt install -y g++ cmake libjsoncpp-dev libssl-dev libboost-all-dev uuid-dev zlib1g-dev git
+
+# Drogon se instala desde fuente (ver scripts/install_drogon.sh)
+# 1. git clone https://github.com/drogonframework/drogon
+# 2. cmake .. -DCMAKE_BUILD_TYPE=Release
+# 3. make -j$(nproc) && sudo make install

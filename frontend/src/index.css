@@ -1,0 +1,197 @@
+@import "tailwindcss";
+
+@theme {
+  --color-notion-bg: #ffffff;
+  --color-notion-sidebar: #f7f6f3;
+  --color-notion-text: #37352f;
+  --color-notion-hover: #ebebeb;
+  --color-notion-border: #e9e9e7;
+}
+
+:root {
+  font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light;
+
+  /* Mathós — paleta cálida con acento púrpura (Sepia) */
+  --sepia-bg: #F4EEE5;
+  --sepia-text: #221D17;
+  --sepia-text-secondary: #6B6155;
+  --sepia-border: #E7DECF;
+  --sepia-card: #ffffff;
+  --sepia-card-alt: #FBF7F0;
+  --sepia-panel: #FDFBF7;
+  --sepia-accent: #6A45DE;
+  --sepia-accent-tint: #EFEAFD;
+  --sepia-chart: #2E9E63;
+  --m-pink: #D8587F;
+  --m-pink-tint: #FCEDF3;
+  --sepia-code-bg: #1E1B2E;
+  --sepia-code-text: #E6E1F5;
+
+  color: var(--sepia-text);
+  background-color: var(--sepia-bg);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Dark theme ──────────────────────────── */
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  --sepia-bg: #0F0F1A;
+  --sepia-text: #E4E2EE;
+  --sepia-text-secondary: #8A85A3;
+  --sepia-border: #26243A;
+  --sepia-card: #18172A;
+  --sepia-card-alt: #1C1B30;
+  --sepia-panel: #141326;
+  --sepia-accent: #A78BFA;
+  --sepia-accent-tint: #1E1B36;
+  --sepia-chart: #4ADE80;
+  --m-pink: #F472B6;
+  --m-pink-tint: #2D1B2A;
+  --sepia-code-bg: #0A0A14;
+  --sepia-code-text: #D4D0EE;
+}
+
+/* ── Light theme ─────────────────────────── */
+[data-theme="light"] {
+  color-scheme: light;
+
+  --sepia-bg: #FAFAFA;
+  --sepia-text: #18181B;
+  --sepia-text-secondary: #71717A;
+  --sepia-border: #E4E4E7;
+  --sepia-card: #FFFFFF;
+  --sepia-card-alt: #F4F4F5;
+  --sepia-panel: #FAFAFA;
+  --sepia-accent: #6A45DE;
+  --sepia-accent-tint: #EFEAFD;
+  --sepia-chart: #22C55E;
+  --m-pink: #E11D6F;
+  --m-pink-tint: #FDECF3;
+  --sepia-code-bg: #1E1E2E;
+  --sepia-code-text: #E6E1F5;
+}
+
+body {
+  margin: 0;
+  display: flex;
+  min-width: 320px;
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+
+#root {
+  width: 100%;
+}
+
+* {
+  border-color: var(--sepia-border);
+}
+
+/* Custom Scrollbar */
+.custom-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: #DCD2C4;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #C9BCA9;
+  background-clip: padding-box;
+}
+
+/* Typography */
+h1, h2, h3, .font-serif {
+  font-family: 'Newsreader', 'Georgia', serif;
+}
+
+.font-sans {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+
+.font-mono, code, pre {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Selection */
+::selection {
+  background-color: rgba(106, 69, 222, 0.15);
+  color: inherit;
+}
+
+/* Animaciones de Teo */
+@keyframes teoBob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6%); }
+}
+
+@keyframes teoShadow {
+  0%, 100% { transform: scaleX(1); opacity: .5; }
+  50% { transform: scaleX(.8); opacity: .32; }
+}
+
+@keyframes teoBlink {
+  0%, 90%, 100% { transform: scaleY(1); }
+  93% { transform: scaleY(.1); }
+  96% { transform: scaleY(1); }
+}
+
+@keyframes teoBrow {
+  0%, 66%, 100% { transform: translateY(0); }
+  72% { transform: translateY(-26%); }
+  86% { transform: translateY(-26%); }
+  92% { transform: translateY(0); }
+}
+
+/* Animaciones de Ikaro (halcón mecánico) */
+@keyframes ikGlow {
+  0%, 100% { opacity: .55; }
+  50% { opacity: 1; }
+}
+
+@keyframes ikLid {
+  0%, 90%, 100% { transform: scaleY(0); }
+  94% { transform: scaleY(1.05); }
+  97% { transform: scaleY(0); }
+}
+
+.ikGlow { animation: ikGlow 2.4s ease-in-out infinite; }
+.ikLid  { animation: ikLid 5s infinite; transform-box: fill-box; transform-origin: center; }
+
+/* Animaciones de UI */
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pop {
+  from { opacity: 0; transform: scale(.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fabIn {
+  from { opacity: 0; transform: translateY(14px) scale(.95); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-msg-in { animation: msgIn .25s ease; }
+.animate-pop { animation: pop .25s ease; }
+.animate-fab-in { animation: fabIn .28s ease; }

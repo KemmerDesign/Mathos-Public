@@ -1,0 +1,138 @@
+# ─── Seguridad: NUNCA subir claves, secretos o tokens ───
+.env
+.env.*.local
+*.key
+*.pem
+*.crt
+*.cert
+**/credentials/**
+**/secrets/**
+**/tokens/**
+
+# ─── Bases de datos (pueden contener datos sensibles) ───
+*.db
+*.sqlite
+*.sqlite3
+*.duckdb
+*.tvim
+chroma_db/**
+backend/api/data/**
+!backend/api/data/.gitkeep
+mathos_pg_dump_*.sql
+
+# ─── Entornos virtuales ───
+.venv/
+venv/
+.venv*/
+env/
+envs/
+
+# ─── Python cache ───
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+dist/
+build/
+
+# ─── Node / Frontend ───
+node_modules/
+dist/
+build/
+*.tsbuildinfo
+.next/
+
+# ─── Compilados / Binarios (C++) ───
+*.o
+*.obj
+*.exe
+*.dll
+*.dylib
+*.out
+*.class
+*.jar
+*.wasm
+
+# ─── Subidas de usuario (ejercicios, PDFs, imágenes) ───
+uploads/
+media/
+storage/
+
+# ─── Sistema / IDE ───
+.DS_Store
+*.log
+.fuse_hidden*
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+*.sublime-*
+
+# ─── Archivos comprimidos ───
+*.zip
+*.tar.gz
+*.tgz
+*.rar
+*.7z
+
+# ─── Cachés de IA ───
+**/teoria_cache/**
+**/andamio_cache/**
+**/problema_cache/**
+**/infografias/**
+**/audio/**
+**/simulacros/**
+
+# ─── Hermes ───
+.hermes/
+
+# ─── Archivos personales del usuario (no del proyecto) ───
+literatura_pendiente.txt
+investigacion_migracion_espana.md
+FP_GRADO_SUPERIOR_INVESTIGACION.md
+madrid_fp_research/
+filosofia_textos/
+
+# ─── Archivos de asistentes IA (evitar contribuidores falsos en GitHub) ───
+
+
+
+.cursorrules
+.windsurf
+
+
+# ─── Diario multi-agente / sesiones de desarrollo ───
+.memory/
+.tracker/
+
+# ─── Asistentes IA externos ───
+.claude/
+.cursorrules
+.windsurf
+.augment/
+.github/copilot-instructions.md
+
+# ─── PINN / flujos de trabajo internos ───
+.pinn-*
+pinn-loop.sh
+
+# ─── Planes y notas personales ───
+PLAN.md
+INSTRUCCIONES.md
+
+# ─── Screenshots y referentes ───
+ScreenShots/
+Referentes/
+
+# ─── Reportes de auditoria interna ───
+resources/docs/rag-code-audit.md
+resources/docs/cybersecurity-report.md
+resources/docs/quality-audit-report.md
+resources/docs/diagnostico-*.md
+resources/docs/sandbox-debug.md
+resources/docs/problemas-registro.md
+
+# ─── Kernel C++ build artifacts ───
+backend/kernel/build/

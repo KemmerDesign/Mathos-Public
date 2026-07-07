@@ -1,0 +1,382 @@
+# Mathós API Contract
+# ====================================================================
+# This contract documents all API endpoints for the Mathós backend.
+# Auto-generated from routes/materias.py and routes/temas.py.
+#
+# Base URL (dev): http://localhost:8001
+# Auth: JWT Bearer token (except /health)
+# ====================================================================
+
+services:
+  api:
+    port: 8001
+    base_path: /api/v1
+    endpoints:
+      # ──────────────────────────────────────────────
+      # System
+      # ──────────────────────────────────────────────
+      - method: GET
+        path: /health
+        description: Health check — returns service status
+        auth_required: false
+
+      # ──────────────────────────────────────────────
+      # Asistente RAG
+      # ──────────────────────────────────────────────
+      - method: POST
+        path: /api/v1/asistente/preguntar
+        description: Consulta RAG + IA. Recibe pregunta y opcionalmente materia/nivel.
+        auth_required: false
+        request_body:
+          pregunta: str
+          tema_id: str | null
+          codigo_materia: str | null
+          nivel: str (dummy | normal)
+        response:
+          respuesta: str
+          fuentes: list[FuenteItem]
+
+      - method: GET
+        path: /api/v1/asistente/colecciones
+        description: Lista las colecciones ChromaDB disponibles
+        auth_required: false
+        response:
+          colecciones: list[ColeccionItem]
+
+      # ──────────────────────────────────────────────
+      # Vision
+      # ──────────────────────────────────────────────
+      - method: POST
+        path: /api/v1/vision/analizar
+        description: Analiza una foto de ejercicio con Gemini Vision
+        auth_required: false
+        request_body: multipart/form-data (imagen + prompt opcional)
+        response:
+          respuesta: str
+          modelo_usado: str
+
+      # ──────────────────────────────────────────────
+      # Kernel C++ (sandbox)
+      # ──────────────────────────────────────────────
+      - method: POST
+        path: /api/v1/compile
+        description: Compila y ejecuta código C++ (proxy al kernel :8100)
+        auth_required: false
+        request_body:
+          code: str
+          timeout: int (opcional)
+        response:
+          stdout: str
+          stderr: str
+          exit_code: int
+          success: bool
+
+  kernel:
+    port: 8100
+    base_path: /api/v1
+    description: "Sandbox C++ — compila y ejecuta código con g++"
+    endpoints:
+      - method: POST
+        path: /api/v1/compile
+        description: Compila y ejecuta código C++
+        auth_required: false
+      - method: GET
+        path: /api/v1/health
+        description: Health check del kernel
+        responses:
+          200:
+            description: Service is healthy
+            body:
+              status: str
+              service: str
+
+      # ──────────────────────────────────────────────
+      # Materias (Subjects)
+      # ──────────────────────────────────────────────
+      - method: GET
+        path: /api/v1/materias
+        description: Listar materias — returns all subjects with optional active filter
+        auth_required: false
+        query_params:
+          - name: activo
+            type: bool
+            required: false
+            description: Filter by active status (true/false)
+        responses:
+          200:
+            description: List of subjects
+            body:
+              materias: list[MateriaItem]
+              total: int
+
+      - method: POST
+        path: /api/v1/materias
+        description: Crear materia — create a new subject (admin only)
+        auth_required: true
+        roles: [admin]
+        request_body:
+          nombre: str
+          codigo_uned: str | null
+          curso: int
+          curso_range: 1-6
+          semestre: int
+          semestre_range: 1-2
+          descripcion: str | null
+          activo: bool
+          activo_default: true
+        responses:
+          201:
+            description: Created subject
+          401:
+            description: Not authenticated
+          403:
+            description: Forbidden - requires admin role
+
+      - method: GET
+        path: /api/v1/materias/{id}
+        description: Detalle de materia — returns subject detail with topics and dominio levels
+        auth_required: false
+        path_params:
+          - name: id
+            type: uuid
+            description: Materia UUID
+        responses:
+          200:
+            description: Subject detail with topics
+            body:
+              id: str
+              nombre: str
+              codigo_uned: str | null
+              curso: int
+              semestre: int
+              descripcion: str | null
+              activo: bool
+              created_at: datetime
+              temas: list[TemaEnMateria]
+          404:
+            description: Materia not found
+
+      - method: GET
+        path: /api/v1/materias/{id}/temas
+        description: Temas de una materia — lists all topics of a subject with dominio level
+        auth_required: false
+        path_params:
+          - name: id
+            type: uuid
+            description: Materia UUID
+        responses:
+          200:
+            description: List of topics
+            body:
+              temas: list[TemaResponse]
+              total: int
+          404:
+            description: Materia not found
+
+      - method: GET
+        path: /api/v1/materias/{id}/progreso
+        description: Progreso general — aggregated progress stats for a subject
+        auth_required: false
+        path_params:
+          - name: id
+            type: uuid
+            description: Materia UUID
+        responses:
+          200:
+            description: Aggregated progress
+            body:
+              materia_id: str
+              materia_nombre: str
+              total_temas: int
+              temas_dominados: int
+              temas_en_curso: int
+              temas_no_iniciados: int
+              tests_superados: int
+              tests_fallados: int
+              tiempo_total_minutos: int
+              temas: list[DominioResponse]
+          404:
+            description: Materia not found
+
+      # ──────────────────────────────────────────────
+      # Temas (Topics)
+      # ──────────────────────────────────────────────
+      - method: GET
+        path: /api/v1/temas/{id}
+        description: Detalle de tema — returns topic detail with dominio level
+        auth_required: false
+        path_params:
+          - name: id
+            type: uuid
+            description: Tema UUID
+        responses:
+          200:
+            description: Topic detail
+            body:
+              id: str
+              materia_id: str
+              nombre: str
+              orden: int
+              descripcion: str | null
+              nivel_dominio: str
+              created_at: datetime
+          404:
+            description: Tema not found
+
+      - method: POST
+        path: /api/v1/temas/{id}/estudiar
+        description: Registrar sesión de estudio — creates a study session and updates dominio
+        auth_required: false
+        path_params:
+          - name: id
+            type: uuid
+            description: Tema UUID
+        request_body:
+          materia_id: str
+          tema_id: str | null
+          tipo: str
+          tipo_enum:
+            - lectura
+            - test
+            - ejercicio
+            - chat
+            - sandbox
+          duracion_minutos: int | null
+          nota: dict | null
+        responses:
+          201:
+            description: Study session created
+            body:
+              id: str
+              materia_id: str
+              tema_id: str | null
+              tipo: str
+              duracion_minutos: int | null
+              nota: dict | null
+              created_at: datetime
+          404:
+            description: Tema not found
+          422:
+            description: Validation error (invalid tipo)
+
+      - method: POST
+        path: /api/v1/temas/{id}/test
+        description: Generar test — creates a test for a topic (placeholder questions for now)
+        auth_required: false
+        path_params:
+          - name: id
+            type: uuid
+            description: Tema UUID
+        request_body:
+          tipo: str
+          tipo_default: practica
+          tipo_enum:
+            - evaluacion
+            - practica
+            - repaso
+          num_preguntas: int
+          num_preguntas_default: 5
+          num_preguntas_range: 1-20
+        responses:
+          201:
+            description: Test created
+            body:
+              id: str
+              tema_id: str
+              tipo: str
+              preguntas: dict
+              respuestas_usuario: null
+              puntuacion: null
+              created_at: datetime
+          404:
+            description: Tema not found
+
+      - method: POST
+        path: /api/v1/temas/{id}/test/{test_id}/responder
+        description: Responder test — submit answers and get grading (placeholder scoring for now)
+        auth_required: false
+        path_params:
+          - name: id
+            type: uuid
+            description: Tema UUID
+          - name: test_id
+            type: uuid
+            description: Test UUID
+        request_body:
+          respuestas: dict
+        responses:
+          200:
+            description: Test scored
+            body:
+              id: str
+              tema_id: str
+              tipo: str
+              preguntas: dict
+              respuestas_usuario: dict
+              puntuacion: decimal | null
+              created_at: datetime
+          404:
+            description: Tema or Test not found
+          409:
+            description: Test already answered
+
+      - method: GET
+        path: /api/v1/temas/{id}/dominio
+        description: Nivel de dominio — returns current dominio level for a topic
+        auth_required: false
+        path_params:
+          - name: id
+            type: uuid
+            description: Tema UUID
+        responses:
+          200:
+            description: Dominio level
+            body:
+              tema_id: str
+              tema_nombre: str
+              nivel: str
+              tests_superados: int
+              tests_fallados: int
+              ejercicios_resueltos: int
+              ultimo_estudio: datetime | null
+              updated_at: datetime
+          404:
+            description: Tema not found
+
+# ──────────────────────────────────────────────
+# Data Types (reference)
+# ──────────────────────────────────────────────
+types:
+  MateriaItem:
+    id: str
+    nombre: str
+    codigo_uned: str | null
+    curso: int
+    semestre: int
+    activo: bool
+
+  TemaEnMateria:
+    id: str
+    nombre: str
+    orden: int
+    descripcion: str | null
+    nivel_dominio: str
+
+  TemaResponse:
+    id: str
+    materia_id: str
+    nombre: str
+    orden: int
+    descripcion: str | null
+    nivel_dominio: str
+    created_at: datetime
+
+  DominioResponse:
+    tema_id: str
+    tema_nombre: str
+    nivel: str
+    tests_superados: int
+    tests_fallados: int
+    ejercicios_resueltos: int
+    ultimo_estudio: datetime | null
+    updated_at: datetime

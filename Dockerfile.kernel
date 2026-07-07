@@ -1,0 +1,67 @@
+# Mathós Kernel C++ (Drogon) — Dockerfile
+# ====================================================================
+# Builds the C++ sandbox kernel with Drogon, CMake, and jsoncpp.
+# ====================================================================
+
+FROM ubuntu:24.04 AS builder
+
+WORKDIR /build
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    cmake \
+    git \
+    libjsoncpp-dev \
+    libssl-dev \
+    libuuid-dev \
+    libz-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build and install Drogon from source (no official ubuntu package for drogon-dev)
+RUN git clone --depth 1 --branch v1.9.9 https://github.com/drogonframework/drogon.git /tmp/drogon \
+    && cd /tmp/drogon \
+    && mkdir build && cd build \
+    && cmake .. -DCMAKE_BUILD_TYPE=Release -DBUILD_CTL=OFF -DBUILD_EXAMPLES=OFF -DBUILD_TESTING=OFF \
+    && cmake --build . -j "$(nproc)" \
+    && cmake --install . \
+    && rm -rf /tmp/drogon
+
+# Copy kernel source
+COPY backend/kernel/ .
+
+# Build the kernel
+RUN mkdir -p build && cd build \
+    && cmake .. -DCMAKE_BUILD_TYPE=Release \
+    && cmake --build . -j "$(nproc)"
+
+# ──────────────────────────────────────────────
+# Runtime stage (minimal)
+# ──────────────────────────────────────────────
+FROM ubuntu:24.04
+
+WORKDIR /app
+
+# Runtime dependencies only (shared libs needed by compiled binary)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libjsoncpp-dev \
+    libssl-dev \
+    libuuid-dev \
+    libz-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy compiled binary from builder
+COPY --from=builder /build/build/mathos-kernel /app/mathos-kernel
+
+# Copy Drogon/trantor shared libs
+COPY --from=builder /usr/local/lib/libdrogon* /usr/local/lib/
+COPY --from=builder /usr/local/lib/libtrantor* /usr/local/lib/
+
+# Refresh linker cache
+RUN ldconfig
+
+# Expose kernel port
+EXPOSE 8100
+
+# Run kernel (listens on all interfaces inside container)
+CMD ["/app/mathos-kernel"]

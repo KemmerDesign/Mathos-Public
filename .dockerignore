@@ -1,0 +1,28 @@
+# ── Python ─────────────────────────────────────
+__pycache__
+*.pyc
+*.pyo
+.venv
+venv
+
+# ── Git ────────────────────────────────────────
+.git
+.gitignore
+
+# ── Project state ──────────────────────────────
+.tracker
+.memory
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Secrets ────────────────────────────────────
+.env
+*.key
+*.pem
+
+# ── Node ───────────────────────────────────────
+node_modules
+
+# ── Mathós internal data ───────────────────────
+backend/api/data/

@@ -1,0 +1,98 @@
+# Mathós — Docker Compose (desarrollo local)
+# ====================================================================
+# Uso: docker compose up -d
+#   Inicia PostgreSQL, Redis, API y Kernel.
+#   El frontend se corre con `npm run dev` fuera del contenedor.
+#
+# Servicios:
+#   postgres  — base de datos principal
+#   redis     — caché / sesiones
+#   kernel    — sandbox de compilación C++ (Drogon, puerto 8100)
+#   api       — backend FastAPI (Python 3.13, puerto 8001)
+#   backend   — alias para api (compatibilidad)
+# ====================================================================
+
+services:
+
+  # ── PostgreSQL ───────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: mathos
+      POSTGRES_USER: mathos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mathos_dev}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mathos"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Redis ────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  # ── Kernel C++ ──────────────────────────────
+  kernel:
+    build:
+      context: .
+      dockerfile: Dockerfile.kernel
+    ports:
+      - "8100:8100"
+    restart: unless-stopped
+
+  # ── API Backend ─────────────────────────────
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8001:8001"
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://mathos:${POSTGRES_PASSWORD:-mathos_dev}@postgres:5432/mathos"
+      REDIS_URL: "redis://redis:6379/0"
+      JWT_SECRET: "${JWT_SECRET:-}"
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY:-}"
+      QWEN_API_KEY: "${QWEN_API_KEY:-}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY:-}"
+      KERNEL_URL: "http://kernel:8100"
+      # Los libros subidos se guardan en este volumen persistente
+      UPLOADS_DIR: "/data/uploads"
+      # Whitelist de emails: define los emails autorizados a registrarse.
+      # Vacío = registro abierto. Ejemplo: ALLOWED_EMAILS=tu@email.com,otro@email.com
+      ALLOWED_EMAILS: "${ALLOWED_EMAILS:-}"
+    volumes:
+      # Volumen persistente para los libros subidos por el usuario.
+      # Los archivos sobreviven reinicios y rebuilds del contenedor.
+      - uploads_data:/data/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ── Alias para compatibilidad ───────────────
+  backend:
+    profiles:
+      - dont-start  # no arranca por defecto, solo es alias
+    extends:
+      service: api
+
+volumes:
+  pgdata:
+  uploads_data:
+    # Volumen nombrado: los libros subidos persisten aunque se haga docker compose down
+    # Para hacer backup: docker run --rm -v mathos_uploads_data:/data alpine tar czf - /data > backup.tgz
