@@ -118,8 +118,8 @@ GeoMathos no es solo un lienzo de dibujo, es un **potenciador del pensamiento ma
 - **Snap visual:** Anillo violeta al acercarse a puntos existentes (14px)
 
 ### Cerebro — Segundo cerebro de apuntes (Estilo Obsidian)
-- **Markdown + LaTeX:** Redacción de notas enriquecidas con fórmulas matemáticas en bloque (`$$ecuación$$`) y en línea (`$ecuación$`), listas y bloques de código C++ estructurados.
-- **Grafo de Relaciones Físico (60 FPS):** Visualización interactiva de tu red de conocimiento en un lienzo SVG flotante auto-organizado mediante simulación física 2D en tiempo real. 
+- **Markdown, LaTeX y Mermaid:** Redacción de notas enriquecidas con diagramas Mermaid completamente estables (sin colisiones en Virtual DOM), fórmulas matemáticas en bloque (`$$ecuación$$`) y en línea (`$ecuación$`), listas y bloques de código.
+- **Grafo de Relaciones Jerárquico (60 FPS):** Visualización interactiva interactiva con físicas 2D en tiempo real. Soporta anidamiento visual mediante cajas contenedoras concéntricas que agrupan y atraen gravitacionalmente las notas y subcarpetas hacia su carpeta padre, integrando un sistema de auto-curación (Anti-NaN) para garantizar la estabilidad del motor gráfico en todo momento.
 - **Tema Cosmos y Paneo:** Soporte para modo "Cosmos" (fondo estrellado espacial interactivo) y navegación (panning) infinita con el mouse a través de todo tu mapa de conocimiento.
 - **Auto-Healing Conceptual:** Escaneo automático de la base de datos al inicio para detectar etiquetas huérfanas o rotas y restaurar/reparar enlaces permanentemente.
 - **Enlaces Wiki Bidireccionales (`[[Link]]`):** Conexión conceptual directa. Al hacer clic en un enlace de concepto en la vista previa, el sistema abre la nota correspondiente; si no existe, la crea en el acto y dibuja la conexión elástica en el grafo.

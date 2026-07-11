@@ -76,9 +76,7 @@ export const renderMarkdownHTML = (content: string): string => {
   // Code Blocks & Mermaid
   html = html.replace(/```([a-zA-Z]*)\n?(.*?)```/gs, (_, lang, code) => {
     if (lang === 'mermaid') {
-      // Mermaid usa el texto original desencodificado porque lo necesita así
-      const decodedCode = code.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-      return `<div class="mermaid" style="display:flex; justify-content:center; margin: 16px 0; background: var(--sepia-panel); padding: 16px; border-radius: 8px;">${decodedCode}</div>`
+      return `<div class="mermaid" style="display:flex; justify-content:center; margin: 16px 0; background: var(--sepia-panel); padding: 16px; border-radius: 8px;">${code}</div>`
     }
     
     let highlighted = code

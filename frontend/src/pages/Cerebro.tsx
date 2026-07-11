@@ -41,6 +41,9 @@ export interface NoteNode {
   vy: number
   materia_id?: string | null
   tema_id?: string | null
+  isFolderNode?: boolean
+  isExpandedFolderNode?: boolean
+  isHidden?: boolean
 }
 
 export interface GraphLink {
@@ -139,6 +142,25 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
   const [newFolderName, setNewFolderName] = useState('')
   const [extraFolders, setExtraFolders] = useState<string[]>([])
 
+  // Nuevos estados para Modo Jerárquico
+  const [graphMode, setGraphMode] = useState<'flat' | 'hierarchical'>('hierarchical')
+  const [expandedFolders, setExpandedFolders] = useState<string[]>(['/'])
+
+  const getVisibleAncestor = (parentFolder: string): string | null => {
+    if (expandedFolders.includes(parentFolder)) return null;
+    let current = parentFolder;
+    let child = parentFolder;
+    while (current !== '/' && current !== '') {
+      const parent = getParentFolder(current);
+      if (expandedFolders.includes(parent)) {
+        return current;
+      }
+      child = current;
+      current = parent;
+    }
+    return child;
+  }
+
   // Efecto para renderizar gráficas Mermaid cuando se abre la vista previa
   useEffect(() => {
     mermaid.initialize({ startOnLoad: false, theme: 'neutral' })
@@ -181,12 +203,18 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
           backendLinks = backendLinks.filter(l => !mockIds.has(l.source) && !mockIds.has(l.target))
 
           // Merge: Si hay backend, confía en él (para no resucitar notas borradas)
-          const mergedNotes: NoteNode[] = backendNotes.map((n: any) => ({
-              id: n.id, title: n.title, content: n.content,
-              category: n.category || 'general', parent_folder: n.parent_folder || '/',
-              x: Number(n.x), y: Number(n.y), vx: 0, vy: 0,
-              materia_id: n.materia_id || null, tema_id: n.tema_id || null,
-          }))
+          const mergedNotes: NoteNode[] = backendNotes.map((n: any) => {
+             let pf = n.parent_folder || '/'
+             if (!pf.startsWith('/')) pf = '/' + pf
+             if (pf.endsWith('/') && pf !== '/') pf = pf.slice(0, -1)
+             
+             return {
+               id: n.id, title: n.title, content: n.content,
+               category: n.category || 'general', parent_folder: pf,
+               x: Number(n.x), y: Number(n.y), vx: 0, vy: 0,
+               materia_id: n.materia_id || null, tema_id: n.tema_id || null,
+             }
+          })
 
           const mergedLinks = backendLinks
 
@@ -208,7 +236,12 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
         const savedLinks = localStorage.getItem('cerebro_links')
         const savedFolders = localStorage.getItem('cerebro_folders')
         if (savedNotes && savedLinks) {
-          const localNotes: NoteNode[] = JSON.parse(savedNotes).map((n: any) => ({ ...n, vx: 0, vy: 0 }))
+          const localNotes: NoteNode[] = JSON.parse(savedNotes).map((n: any) => {
+             let pf = n.parent_folder || '/'
+             if (!pf.startsWith('/')) pf = '/' + pf
+             if (pf.endsWith('/') && pf !== '/') pf = pf.slice(0, -1)
+             return { ...n, parent_folder: pf, vx: 0, vy: 0 }
+          })
           const localLinks: GraphLink[] = JSON.parse(savedLinks).map((l: any) => ({
             source: l.source_id || l.source,
             target: l.target_id || l.target
@@ -281,7 +314,7 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
   // Guardar siempre en localStorage (inmediato)
   useEffect(() => {
     if (!isLoaded) return
-    const notasClean = notes.map(({ vx, vy, ...rest }) => rest)
+    const notasClean = notes.filter(n => !n.isFolderNode).map(({ vx, vy, isFolderNode, isHidden, ...rest }) => rest)
     const enlacesBackend = links.map(l => ({ source_id: l.source, target_id: l.target }))
     try {
       localStorage.setItem('cerebro_notes', JSON.stringify(notasClean))
@@ -300,7 +333,7 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
   useEffect(() => {
     if (!isLoaded) return
     const timer = setTimeout(() => {
-      const notasClean = notes.map(({ vx, vy, ...rest }) => rest)
+      const notasClean = notes.filter(n => !n.isFolderNode).map(({ vx, vy, isFolderNode, isHidden, ...rest }) => rest)
       const enlacesBackend = links.map(l => ({ source_id: l.source, target_id: l.target }))
 
       api.post('/cerebro/sync', { notas: notasClean, enlaces: enlacesBackend }).catch(() => {})
@@ -314,7 +347,7 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
     const forceSave = () => {
       const { notes: currNotes, links: currLinks } = syncStateRef.current
       if (currNotes.length === 0) return // don't wipe backend if not loaded properly
-      const notasClean = currNotes.map(({ vx, vy, ...rest }) => rest)
+      const notasClean = currNotes.filter(n => !n.isFolderNode).map(({ vx, vy, isFolderNode, isHidden, ...rest }) => rest)
       const enlacesBackend = currLinks.map(l => ({ source_id: l.source, target_id: l.target }))
       // Usamos keepalive para que la petición no se cancele si el navegador cierra la pestaña
       const token = localStorage.getItem('auth_token')
@@ -334,6 +367,75 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
       forceSave()
     }
   }, [])
+
+  // Sync virtual folder nodes and node visibility
+  useEffect(() => {
+    if (!isLoaded) return
+    setNotes(prev => {
+      let next = [...prev]
+      
+      if (graphMode === 'flat') {
+        next = next.filter(n => !n.isFolderNode)
+        next.forEach(n => { n.isHidden = false })
+        return next
+      }
+
+      const neededFolders = new Set<string>()
+      const rawNotes = next.filter(n => !n.isFolderNode)
+      
+      const findFoldersFor = (parent: string) => {
+         if (!expandedFolders.includes(parent)) return
+         
+         const subs = getSubfolders(rawNotes, parent, extraFolders)
+         subs.forEach(f => {
+            neededFolders.add(f)
+            findFoldersFor(f)
+         })
+      }
+      
+      findFoldersFor('/')
+
+      next = next.filter(n => !n.isFolderNode || neededFolders.has(n.id))
+
+      neededFolders.forEach(f => {
+         let node = next.find(n => n.id === f && n.isFolderNode)
+         if (!node) {
+            const children = next.filter(n => !n.isFolderNode && (n.parent_folder === f || n.parent_folder.startsWith(f + '/')))
+            let cx = 350, cy = 300
+            if (children.length > 0) {
+               const validChildren = children.filter(c => !isNaN(c.x) && !isNaN(c.y));
+               if (validChildren.length > 0) {
+                  cx = validChildren.reduce((sum, c) => sum + c.x, 0) / validChildren.length
+                  cy = validChildren.reduce((sum, c) => sum + c.y, 0) / validChildren.length
+               }
+            }
+            node = {
+               id: f,
+               title: getFolderName(f),
+               content: '',
+               category: 'folder',
+               parent_folder: getParentFolder(f),
+               x: cx,
+               y: cy,
+               vx: 0,
+               vy: 0,
+               isFolderNode: true
+            } as NoteNode
+            next.push(node)
+         }
+         // Set expanded state
+         node.isExpandedFolderNode = expandedFolders.includes(f)
+      })
+
+      next.forEach(n => {
+         if (!n.isFolderNode) {
+            n.isHidden = !expandedFolders.includes(n.parent_folder)
+         }
+      })
+
+      return next
+    })
+  }, [expandedFolders, graphMode, isLoaded, extraFolders])
 
   const [selectedNoteId, setSelectedNoteId] = useState<string>('')
   const [editorMode, setEditorMode] = useState<'write' | 'preview'>('preview')
@@ -392,16 +494,16 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
   const selectedNote = notes.find(n => n.id === selectedNoteId)
 
   useEffect(() => {
-    if (editorMode === 'preview' && selectedNote) {
+    if (editorMode === 'preview') {
       setTimeout(() => {
         try {
-          mermaid.run({ querySelector: '.mermaid' })
+          void mermaid.run({ querySelector: '.mermaid', suppressErrors: true })
         } catch (e) {
           console.error("Mermaid run error:", e)
         }
       }, 50)
     }
-  }, [selectedNote, editorMode])
+  }, [selectedNote, editorMode, ikaroMessages])
 
   // 2. Physics Simulation Loop (60 FPS force layout)
   useEffect(() => {
@@ -409,34 +511,53 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
     const run = () => {
       setNodes(prev => {
         const next = prev.map(n => ({ ...n }))
+        const activeNodes = next.filter(n => !n.isHidden)
         
+        // Compute active links
+        const activeLinks: GraphLink[] = []
+        links.forEach(link => {
+           const sNode = prev.find(n => n.id === link.source && !n.isFolderNode)
+           const tNode = prev.find(n => n.id === link.target && !n.isFolderNode)
+           if (sNode && tNode) {
+              const sVis = graphMode === 'hierarchical' ? (getVisibleAncestor(sNode.parent_folder) || sNode.id) : sNode.id
+              const tVis = graphMode === 'hierarchical' ? (getVisibleAncestor(tNode.parent_folder) || tNode.id) : tNode.id
+              if (sVis !== tVis) {
+                 activeLinks.push({ source: sVis, target: tVis })
+              }
+           }
+        })
+
         // Repulsion force
-        for (let i = 0; i < next.length; i++) {
-          for (let j = i + 1; j < next.length; j++) {
-            const dx = next[j].x - next[i].x
-            const dy = next[j].y - next[i].y
+        for (let i = 0; i < activeNodes.length; i++) {
+          for (let j = i + 1; j < activeNodes.length; j++) {
+            if (activeNodes[i].isExpandedFolderNode || activeNodes[j].isExpandedFolderNode) continue;
+            // The dragged node should not exert repulsion to prevent things running away from the mouse
+            if (activeNodes[i].id === draggedNode || activeNodes[j].id === draggedNode) continue;
+            
+            const dx = activeNodes[j].x - activeNodes[i].x
+            const dy = activeNodes[j].y - activeNodes[i].y
             const dist = Math.hypot(dx, dy) || 1
-            if (dist < 150) {
-              const force = (150 - dist) * 0.05
+            if (dist < 220) {
+              const force = (220 - dist) * 0.08
               const fx = (dx / dist) * force
               const fy = (dy / dist) * force
-              next[i].vx -= fx
-              next[i].vy -= fy
-              next[j].vx += fx
-              next[j].vy += fy
+              activeNodes[i].vx -= fx
+              activeNodes[i].vy -= fy
+              activeNodes[j].vx += fx
+              activeNodes[j].vy += fy
             }
           }
         }
         
         // Attraction force
-        links.forEach(link => {
-          const s = next.find(n => n.id === link.source)
-          const t = next.find(n => n.id === link.target)
-          if (s && t) {
+        activeLinks.forEach(link => {
+          const s = activeNodes.find(n => n.id === link.source)
+          const t = activeNodes.find(n => n.id === link.target)
+          if (s && t && !s.isExpandedFolderNode && !t.isExpandedFolderNode) {
             const dx = t.x - s.x
             const dy = t.y - s.y
             const dist = Math.hypot(dx, dy) || 1
-            const force = (dist - 110) * 0.02
+            const force = (dist - 140) * 0.02
             const fx = (dx / dist) * force
             const fy = (dy / dist) * force
             s.vx += fx
@@ -448,10 +569,36 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
         
         // Pull to center & update coordinates
         const cx = 350, cy = 300 // Centrado mejorado
-        next.forEach(n => {
+        activeNodes.forEach(n => {
           if (n.id === draggedNode) return
-          n.vx += (cx - n.x) * 0.003
-          n.vy += (cy - n.y) * 0.003
+          
+          if (isNaN(n.x)) n.x = cx + Math.random() * 10;
+          if (isNaN(n.y)) n.y = cy + Math.random() * 10;
+          if (isNaN(n.vx)) n.vx = 0;
+          if (isNaN(n.vy)) n.vy = 0;
+          
+          // ALWAYS pull slightly to center of screen to prevent deep space drifting!
+          n.vx += (cx - n.x) * 0.002
+          n.vy += (cy - n.y) * 0.002
+          
+          if (n.isExpandedFolderNode) {
+             const children = activeNodes.filter(c => c.id !== n.id && (c.parent_folder === n.id || c.parent_folder.startsWith(n.id + '/')))
+             if (children.length > 0) {
+                const targetX = children.reduce((sum, c) => sum + (Number(c.x) || cx), 0) / children.length
+                const targetY = children.reduce((sum, c) => sum + (Number(c.y) || cy), 0) / children.length
+                if (!isNaN(targetX)) n.vx += (targetX - n.x) * 0.08
+                if (!isNaN(targetY)) n.vy += (targetY - n.y) * 0.08
+             }
+          } else {
+             // Find if this node is inside an expanded folder
+             // We sort by length to get the DEEPEST expanded folder it belongs to
+             const parentExpanded = activeNodes.filter(p => p.isExpandedFolderNode && (n.parent_folder === p.id || n.parent_folder.startsWith(p.id + '/')))
+                                               .sort((a, b) => b.id.length - a.id.length)[0]
+             if (parentExpanded && !isNaN(parentExpanded.x) && !isNaN(parentExpanded.y)) {
+                n.vx += (parentExpanded.x - n.x) * 0.006
+                n.vy += (parentExpanded.y - n.y) * 0.006
+             }
+          }
           
           n.x += n.vx
           n.y += n.vy
@@ -465,7 +612,7 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
     }
     animId = requestAnimationFrame(run)
     return () => cancelAnimationFrame(animId)
-  }, [links, draggedNode])
+  }, [links, draggedNode, graphMode, expandedFolders])
 
   const setNodes = (fn: (prev: NoteNode[]) => NoteNode[]) => {
     setNotes(prev => fn(prev))
@@ -523,6 +670,43 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
     if (currentFolder.startsWith(folderPath) || currentFolder === folderPath) {
       setCurrentFolder(getParentFolder(folderPath))
     }
+  }
+
+  const handleSidebarDrop = (e: React.DragEvent, targetFolder: string) => {
+    e.preventDefault()
+    e.stopPropagation()
+    const data = e.dataTransfer.getData('text/plain')
+    if (!data) return
+    try {
+      const payload = JSON.parse(data)
+      if (payload.type === 'note') {
+        moveNoteToFolder(payload.id, targetFolder)
+      } else if (payload.type === 'folder') {
+        const oldPath = payload.id
+        if (oldPath === targetFolder || targetFolder.startsWith(oldPath + '/')) return
+        
+        const folderName = getFolderName(oldPath)
+        const newPath = targetFolder === '/' ? `/${folderName}` : `${targetFolder}/${folderName}`
+        
+        setNotes(prev => prev.map(n => {
+           if (!n.isFolderNode) {
+              if (n.parent_folder === oldPath) return { ...n, parent_folder: newPath }
+              if (n.parent_folder.startsWith(oldPath + '/')) {
+                 return { ...n, parent_folder: n.parent_folder.replace(oldPath, newPath) }
+              }
+           }
+           return n;
+        }))
+  
+        setExtraFolders(prev => {
+           return prev.map(f => {
+              if (f === oldPath) return newPath;
+              if (f.startsWith(oldPath + '/')) return f.replace(oldPath, newPath);
+              return f;
+           })
+        })
+      }
+    } catch (err) {}
   }
 
   const moveNoteToFolder = (noteId: string, targetFolder: string) => {
@@ -647,6 +831,48 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
   }
 
   const handleMouseUp = () => {
+    if (draggedNode) {
+      const dn = notes.find(n => n.id === draggedNode)
+      if (dn) {
+        const dropTarget = notes.find(n => 
+          n.isFolderNode && 
+          !n.isExpandedFolderNode &&
+          n.id !== dn.id && 
+          n.id !== dn.parent_folder && // No mover a donde ya está
+          (!dn.isFolderNode || !n.id.startsWith(dn.id + '/')) && // No soltar dentro de sus propios hijos
+          Math.hypot(n.x - dn.x, n.y - dn.y) < 50
+        )
+
+        if (dropTarget) {
+           if (dn.isFolderNode) {
+              const oldPath = dn.id
+              const folderName = getFolderName(oldPath)
+              const newPath = dropTarget.id === '/' ? `/${folderName}` : `${dropTarget.id}/${folderName}`
+              
+              setNotes(prev => prev.map(n => {
+                 if (!n.isFolderNode) {
+                    if (n.parent_folder === oldPath) return { ...n, parent_folder: newPath }
+                    if (n.parent_folder.startsWith(oldPath + '/')) {
+                       return { ...n, parent_folder: n.parent_folder.replace(oldPath, newPath) }
+                    }
+                 }
+                 return n;
+              }))
+
+              setExtraFolders(prev => {
+                 return prev.map(f => {
+                    if (f === oldPath) return newPath;
+                    if (f.startsWith(oldPath + '/')) return f.replace(oldPath, newPath);
+                    return f;
+                 })
+              })
+           } else {
+              // Move note
+              setNotes(prev => prev.map(n => n.id === draggedNode ? { ...n, parent_folder: dropTarget.id } : n))
+           }
+        }
+      }
+    }
     setDraggedNode(null)
   }
 
@@ -690,20 +916,34 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
   // All notes for graph view (filtered by search + local graph toggle)
   const graphNotes = (() => {
     let base = searchTerm ? filteredNotes : notes
+    base = base.filter(n => !n.isHidden)
     if (localGraph && selectedNoteId) {
       const neighborIds = new Set<string>()
       links.forEach(l => {
-        if (l.source === selectedNoteId) neighborIds.add(l.target)
-        if (l.target === selectedNoteId) neighborIds.add(l.source)
+        const sVis = graphMode === 'hierarchical' ? (getVisibleAncestor(notes.find(n => n.id === l.source)?.parent_folder || '') || l.source) : l.source
+        const tVis = graphMode === 'hierarchical' ? (getVisibleAncestor(notes.find(n => n.id === l.target)?.parent_folder || '') || l.target) : l.target
+        if (sVis === selectedNoteId) neighborIds.add(tVis)
+        if (tVis === selectedNoteId) neighborIds.add(sVis)
       })
       neighborIds.add(selectedNoteId)
       base = base.filter(n => neighborIds.has(n.id))
     }
     return base
   })()
-  const graphLinks = localGraph && selectedNoteId
-    ? links.filter(l => l.source === selectedNoteId || l.target === selectedNoteId)
-    : links
+
+  const graphLinks = (() => {
+    let activeLinks: GraphLink[] = []
+    links.forEach(l => {
+      const sVis = graphMode === 'hierarchical' ? (getVisibleAncestor(notes.find(n => n.id === l.source)?.parent_folder || '') || l.source) : l.source
+      const tVis = graphMode === 'hierarchical' ? (getVisibleAncestor(notes.find(n => n.id === l.target)?.parent_folder || '') || l.target) : l.target
+      if (sVis !== tVis) {
+        if (!localGraph || !selectedNoteId || sVis === selectedNoteId || tVis === selectedNoteId) {
+          activeLinks.push({ source: sVis, target: tVis })
+        }
+      }
+    })
+    return activeLinks
+  })()
 
   const exportBrainToZip = async () => {
     const zip = new JSZip()
@@ -902,6 +1142,8 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
           {/* Botón "Raíz" siempre visible */}
           <button
             onClick={() => setCurrentFolder('/')}
+            onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
+            onDrop={(e) => handleSidebarDrop(e, '/')}
             style={{
               width: '100%', textAlign: 'left', padding: '5px 8px',
               borderRadius: 6, border: 'none',
@@ -913,7 +1155,14 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
           >📁 Raíz</button>
 
           {subfolders.map(f => (
-            <div key={f} style={{ display: 'flex', alignItems: 'center', marginBottom: 2 }}>
+            <div 
+              key={f} 
+              style={{ display: 'flex', alignItems: 'center', marginBottom: 2 }}
+              draggable
+              onDragStart={(e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'folder', id: f })) }}
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move' }}
+              onDrop={(e) => handleSidebarDrop(e, f)}
+            >
               <button
                 onClick={() => setCurrentFolder(f)}
                 style={{
@@ -952,6 +1201,8 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
             return (
               <div
                 key={n.id}
+                draggable
+                onDragStart={(e) => { e.dataTransfer.setData('text/plain', JSON.stringify({ type: 'note', id: n.id })) }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 4,
                   borderRadius: 8, marginBottom: 2,
@@ -1098,20 +1349,47 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, padding: 16 }}>
                 {editorMode === 'write' ? (
                   <div style={{ display: 'flex', flexDirection: 'column', flex: 1, gap: 12 }}>
-                    <input
-                      type="text"
-                      value={selectedNote.title}
-                      onChange={e => {
-                        const val = e.target.value
-                        setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, title: val } : n))
-                      }}
-                      style={{
-                        fontSize: 18, fontWeight: 800, border: 'none', outline: 'none',
-                        background: 'transparent', color: 'var(--sepia-text)',
-                        borderBottom: '1px solid var(--sepia-border)', paddingBottom: 6
-                      }}
-                      placeholder="Título de la nota"
-                    />
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid var(--sepia-border)', paddingBottom: 6 }}>
+                      <input
+                        type="text"
+                        value={selectedNote.title}
+                        onChange={e => {
+                          const val = e.target.value
+                          setNotes(prev => prev.map(n => n.id === selectedNoteId ? { ...n, title: val } : n))
+                        }}
+                        style={{
+                          flex: 1, fontSize: 18, fontWeight: 800, border: 'none', outline: 'none',
+                          background: 'transparent', color: 'var(--sepia-text)'
+                        }}
+                        placeholder="Título de la nota"
+                      />
+                      <select
+                        value={selectedNote.parent_folder}
+                        onChange={e => {
+                          let val = e.target.value;
+                          if (val === '__new__') {
+                            const newFolder = window.prompt("Nombre de la nueva carpeta:");
+                            if (newFolder) {
+                              val = currentFolder === '/' ? `/${newFolder}` : `${currentFolder}/${newFolder}`;
+                              setExtraFolders(prev => [...prev, val]);
+                            } else {
+                              return;
+                            }
+                          }
+                          moveNoteToFolder(selectedNoteId, val);
+                        }}
+                        style={{
+                          fontSize: 12, padding: '4px 8px', borderRadius: 4, border: '1px solid var(--sepia-border)',
+                          background: 'var(--sepia-panel)', color: 'var(--sepia-text-secondary)',
+                          cursor: 'pointer', outline: 'none'
+                        }}
+                      >
+                        {Array.from(new Set([...notes.filter(n => !n.isFolderNode).map(x => x.parent_folder), ...extraFolders])).sort().map(f => (
+                          <option key={f} value={f}>🗂️ {getFolderName(f)}</option>
+                        ))}
+                        <option value="__new__">+ Crear nueva carpeta...</option>
+                      </select>
+                    </div>
                     <textarea
                       ref={cmdInputRef}
                       value={selectedNote.content}
@@ -1180,6 +1458,15 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
                       cursor: 'pointer', textTransform: 'uppercase'
                     }}
                   >{localGraph ? '📌 Local' : '🌐 Global'}</button>
+                  <button
+                    onClick={() => setGraphMode(m => m === 'flat' ? 'hierarchical' : 'flat')}
+                    style={{
+                      border: 'none', background: graphMode === 'hierarchical' ? '#F0FDFA' : 'transparent',
+                      color: graphMode === 'hierarchical' ? '#0D9488' : 'var(--sepia-text-secondary)',
+                      padding: '2px 8px', borderRadius: 4, fontSize: 10, fontWeight: 700,
+                      cursor: 'pointer', textTransform: 'uppercase'
+                    }}
+                  >{graphMode === 'hierarchical' ? '🗂️ Jerárquico' : '🌌 Plano'}</button>
                 </div>
               </div>
               
@@ -1228,6 +1515,38 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
                   ))}
 
                   <g transform={`translate(${pan.x}, ${pan.y})`}>
+                  {/* Render Expanded Folders as Bounding Boxes (Bottom Layer) */}
+                  {graphNotes.filter(n => n.isFolderNode && n.isExpandedFolderNode).map(n => {
+                     const children = graphNotes.filter(c => c.id !== n.id && (c.parent_folder === n.id || c.parent_folder.startsWith(n.id + '/')))
+                                                .filter(c => !isNaN(c.x) && !isNaN(c.y));
+                     
+                     const depth = n.id.split('/').filter(Boolean).length;
+                     const p = 40 + Math.max(0, 4 - depth) * 15; // Dynamic padding for concentric boxes
+                     
+                     let minX = (n.x || 350) - p, minY = (n.y || 300) - p, maxX = (n.x || 350) + p, maxY = (n.y || 300) + p;
+                     if (children.length > 0) {
+                        minX = Math.min(...children.map(c => c.x)) - p;
+                        minY = Math.min(...children.map(c => c.y)) - p;
+                        maxX = Math.max(...children.map(c => c.x)) + p;
+                        maxY = Math.max(...children.map(c => c.y)) + p;
+                     }
+                     const width = Math.max(0, maxX - minX);
+                     const height = Math.max(0, maxY - minY);
+
+                     return (
+                        <g key={n.id} onClick={(e) => { e.stopPropagation(); setExpandedFolders(prev => prev.filter(f => f !== n.id)) }} style={{cursor: 'pointer'}}>
+                           <rect 
+                              x={minX} y={minY} width={width} height={height} rx={16} 
+                              fill={theme === 'cosmos' ? 'rgba(167, 139, 250, 0.08)' : 'rgba(245, 158, 11, 0.08)'} 
+                              stroke={theme === 'cosmos' ? 'rgba(167, 139, 250, 0.4)' : 'rgba(245, 158, 11, 0.4)'} 
+                              strokeWidth={2} strokeDasharray="6 4" 
+                           />
+                           <text x={minX + 16} y={minY + 24} fill={theme === 'cosmos' ? '#a78bfa' : '#F59E0B'} style={{fontSize: 14, fontWeight: 'bold', pointerEvents: 'none'}}>{n.title}</text>
+                           <text x={maxX - 24} y={minY + 24} fill={theme === 'cosmos' ? '#a78bfa' : '#F59E0B'} style={{fontSize: 12, opacity: 0.7, pointerEvents: 'none'}}>[ - ]</text>
+                        </g>
+                     )
+                  })}
+
                   {/* Render links (lines) */}
                   {graphLinks.map((link, idx) => {
                     const s = graphNotes.find(n => n.id === link.source)
@@ -1246,8 +1565,8 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
                     )
                   })}
 
-                  {/* Render nodes */}
-                  {graphNotes.map(n => {
+                  {/* Render normal nodes & collapsed folders */}
+                  {graphNotes.filter(n => !n.isExpandedFolderNode).map(n => {
                     const isSel = n.id === selectedNoteId
                     const color = getFolderColor(n.parent_folder)
                     
@@ -1255,17 +1574,39 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
                       <g
                         key={n.id}
                         onMouseDown={() => handleMouseDown(n.id)}
-                        onClick={(e) => { e.stopPropagation(); setSelectedNoteId(n.id); setCurrentFolder(n.parent_folder) }}
-                        style={{ cursor: 'grab' }}
+                        onClick={(e) => { 
+                          e.stopPropagation(); 
+                          if (n.isFolderNode) {
+                            setExpandedFolders(prev => prev.includes(n.id) ? prev.filter(f => f !== n.id) : [...prev, n.id])
+                          } else {
+                            setSelectedNoteId(n.id); 
+                            setCurrentFolder(n.parent_folder);
+                          }
+                        }}
+                        style={{ cursor: n.isFolderNode ? 'pointer' : 'grab' }}
                       >
-                        <circle
-                          cx={n.x} cy={n.y}
-                          r={isSel ? 18 : 12}
-                          fill={theme === 'cosmos' ? (isSel ? '#c084fc' : '#e9d5ff') : color}
-                          stroke={isSel ? (theme === 'cosmos' ? '#fff' : '#000') : (theme === 'cosmos' ? '#a855f7' : '#fff')}
-                          strokeWidth={isSel ? 2 : 1.5}
-                          style={{ transition: 'r 0.2s', filter: theme === 'cosmos' ? 'url(#glow)' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
-                        />
+                        {n.isFolderNode ? (
+                          <rect
+                            x={n.x - 18} 
+                            y={n.y - 14} 
+                            width={36} 
+                            height={28} 
+                            rx={4}
+                            fill={theme === 'cosmos' ? '#a78bfa' : '#F59E0B'}
+                            stroke={theme === 'cosmos' ? '#fff' : '#000'}
+                            strokeWidth={1.5}
+                            style={{ filter: theme === 'cosmos' ? 'url(#glow)' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
+                          />
+                        ) : (
+                          <circle
+                            cx={n.x} cy={n.y}
+                            r={isSel ? 18 : 12}
+                            fill={theme === 'cosmos' ? (isSel ? '#c084fc' : '#e9d5ff') : color}
+                            stroke={isSel ? (theme === 'cosmos' ? '#fff' : '#000') : (theme === 'cosmos' ? '#a855f7' : '#fff')}
+                            strokeWidth={isSel ? 2 : 1.5}
+                            style={{ transition: 'r 0.2s', filter: theme === 'cosmos' ? 'url(#glow)' : 'drop-shadow(0 2px 4px rgba(0,0,0,0.1))' }}
+                          />
+                        )}
                         <text
                           x={n.x} y={n.y + (isSel ? 32 : 24)}
                           textAnchor="middle"
@@ -1279,7 +1620,7 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
                             textShadow: theme === 'cosmos' ? '0 0 5px rgba(0,0,0,0.8)' : '0 1px 2px rgba(255,255,255,0.8)'
                           }}
                         >
-                          {n.title}
+                          {n.title.length > 25 ? n.title.substring(0, 25) + '...' : n.title}
                         </text>
                       </g>
                     )

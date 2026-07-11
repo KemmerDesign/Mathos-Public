@@ -125,7 +125,9 @@ class Settings(BaseSettings):
     def JWT_SECRET_REQUIRED(self) -> str:
         """Return JWT_SECRET or raise if empty in production."""
         secret = self.JWT_SECRET
-        if not secret and os.getenv("ENV", "development") == "production":
+        if secret:
+            return secret
+        if os.getenv("ENV", "development") == "production":
             raise RuntimeError("JWT_SECRET is required in production")
         raise RuntimeError("JWT_SECRET must be set in .env or environment")
 
