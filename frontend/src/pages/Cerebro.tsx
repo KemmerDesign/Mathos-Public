@@ -136,6 +136,8 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
   const [ikaroInput, setIkaroInput] = useState('')
   const [ikaroLoading, setIkaroLoading] = useState(false)
 
+
+
   // Carpeta actual en el explorador
   const [currentFolder, setCurrentFolder] = useState('/')
   const [folderCreating, setFolderCreating] = useState(false)
@@ -311,6 +313,7 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
     loadData()
   }, [])
 
+
   // Guardar siempre en localStorage (inmediato)
   useEffect(() => {
     if (!isLoaded) return
@@ -437,7 +440,75 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
     })
   }, [expandedFolders, graphMode, isLoaded, extraFolders])
 
-  const [selectedNoteId, setSelectedNoteId] = useState<string>('')
+    const [selectedNoteId, setSelectedNoteId] = useState<string>('')
+  
+  // Biblios State
+  const [showBiblios, setShowBiblios] = useState(false)
+  const [bibliosSessions, setBibliosSessions] = useState<any[]>([])
+  const [bibliosLoading, setBibliosLoading] = useState(false)
+  const [bibliosScope, setBibliosScope] = useState<'nodo' | 'carpeta' | 'grafo'>('nodo')
+  const [bibliosInstructions, setBibliosInstructions] = useState('')
+
+    // Biblios API integration
+  useEffect(() => {
+    if (showBiblios) {
+      if (bibliosScope === 'nodo' && selectedNoteId) {
+        api.get(`/biblios/nota/${selectedNoteId}`)
+          .then(res => setBibliosSessions(res.data))
+          .catch(console.error)
+      } else if (bibliosScope === 'carpeta' && currentFolder) {
+        const targetId = encodeURIComponent(currentFolder)
+        api.get(`/biblios/macro/carpeta/${targetId}`)
+          .then(res => setBibliosSessions(res.data))
+          .catch(console.error)
+      } else if (bibliosScope === 'grafo') {
+        api.get(`/biblios/macro/grafo/all`)
+          .then(res => setBibliosSessions(res.data))
+          .catch(console.error)
+      }
+    }
+  }, [showBiblios, bibliosScope, selectedNoteId, currentFolder])
+
+    const handleAuditarBiblios = async () => {
+    setBibliosLoading(true);
+    try {
+      // Guardar grafo actual para asegurar estado fresco
+      const notasClean = notes.filter(n => !n.isFolderNode).map(({ vx, vy, isFolderNode, isHidden, ...rest }) => rest)
+      const enlacesBackend = links.map(l => ({ source_id: l.source, target_id: l.target }))
+      await api.post('/cerebro/sync', { notas: notasClean, enlaces: enlacesBackend })
+      
+      let res;
+      if (bibliosScope === 'nodo') {
+        if (!selectedNoteId) throw new Error('No hay nodo seleccionado');
+        res = await api.post(`/biblios/evaluar/${selectedNoteId}`, {
+          instrucciones: bibliosInstructions
+        });
+      } else {
+        const isFolder = bibliosScope === 'carpeta';
+        const targetId = isFolder ? currentFolder : 'all';
+        const notasToEval = isFolder 
+          ? notasClean.filter(n => n.parent_folder === currentFolder || n.parent_folder.startsWith(currentFolder + '/'))
+          : notasClean;
+        const validIds = new Set(notasToEval.map(n => n.id));
+        const enlacesToEval = enlacesBackend.filter(l => validIds.has(l.source_id) && validIds.has(l.target_id));
+        
+        res = await api.post('/biblios/macro/evaluar', {
+          target_type: bibliosScope,
+          target_id: targetId,
+          notas: notasToEval,
+          enlaces: enlacesToEval,
+          instrucciones: bibliosInstructions
+        });
+      }
+      setBibliosSessions(prev => [res.data, ...prev]);
+    } catch (e) {
+      console.error(e);
+      alert('Error al auditar con Biblios');
+    } finally {
+      setBibliosLoading(false);
+    }
+  }
+
   const [editorMode, setEditorMode] = useState<'write' | 'preview'>('preview')
   const [showBacklinks, setShowBacklinks] = useState(false)
   const [localGraph, setLocalGraph] = useState(false)
@@ -1042,7 +1113,17 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
             <span style={{ fontSize: 12, fontWeight: 800, textTransform: 'uppercase', color: 'var(--sepia-text-secondary)', letterSpacing: '.06em' }}>Mi Cerebro</span>
             <div style={{ display: 'flex', gap: 6 }}>
               <button
-                onClick={() => setShowIkaro(v => !v)}
+                onClick={() => { setShowBiblios(v => !v); setShowIkaro(false); }}
+                title="Auditor Biblios"
+                style={{
+                  background: showBiblios ? '#059669' : 'transparent',
+                  color: showBiblios ? 'white' : 'var(--sepia-text-secondary)',
+                  border: '1px solid var(--sepia-border)', padding: '4px 8px',
+                  borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: 'pointer'
+                }}
+              >🦉</button>
+              <button
+                onClick={() => { setShowIkaro(v => !v); setShowBiblios(false); }}
                 title="Preguntar a Ikaro"
                 style={{
                   background: showIkaro ? '#6A45DE' : 'transparent',
@@ -1728,6 +1809,187 @@ export default function Cerebro({ materiaId = null, temaId = null }: CerebroProp
                 color: 'var(--sepia-text)', fontSize: 12, outline: 'none', fontFamily: 'inherit'
               }}
             />
+          </div>
+        </div>
+      )}
+
+      {/* Panel Biblios */}
+      {showBiblios && selectedNote && (
+        <div style={{
+          position: 'fixed', right: 0, top: 0, bottom: 0, width: 340, zIndex: 100,
+          background: 'var(--sepia-panel)', borderLeft: '1px solid var(--sepia-border)',
+          display: 'flex', flexDirection: 'column', boxShadow: '-4px 0 20px rgba(0,0,0,.12)'
+        }}>
+          <div style={{
+            padding: '14px 16px', borderBottom: '1px solid var(--sepia-border)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0,
+            background: 'rgba(5, 150, 105, 0.05)'
+          }}>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 15, color: '#059669' }}>🦉 Biblios</div>
+              <div style={{ fontSize: 11, opacity: .6, color: 'var(--sepia-text)', marginTop: 1 }}>
+                Auditor de Redacción · {selectedNote.title}
+              </div>
+            </div>
+            <button onClick={() => setShowBiblios(false)} style={{
+              background: 'transparent', border: 'none', cursor: 'pointer',
+              fontSize: 18, opacity: .5, color: 'var(--sepia-text)'
+            }}>✕</button>
+          </div>
+
+          <div style={{ padding: '16px', flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--sepia-text)', opacity: 0.8 }}>Alcance del Análisis</label>
+              <select 
+                value={bibliosScope} 
+                onChange={e => setBibliosScope(e.target.value as any)}
+                style={{
+                  padding: '8px 12px', borderRadius: 6, border: '1px solid var(--sepia-border)',
+                  background: 'var(--sepia-bg)', color: 'var(--sepia-text)', fontSize: 13, outline: 'none'
+                }}
+              >
+                <option value="nodo">Nodo Actual</option>
+                <option value="carpeta">Carpeta Actual</option>
+                <option value="grafo">Todo el Grafo</option>
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--sepia-text)', opacity: 0.8 }}>Instrucciones (opcional)</label>
+              <textarea
+                value={bibliosInstructions}
+                onChange={e => setBibliosInstructions(e.target.value)}
+                placeholder="Ej. Revisa el rigor matemático, o hazlo más pedagógico..."
+                rows={3}
+                style={{
+                  padding: '8px 12px', borderRadius: 6, border: '1px solid var(--sepia-border)',
+                  background: 'var(--sepia-bg)', color: 'var(--sepia-text)', fontSize: 13, resize: 'none',
+                  outline: 'none', fontFamily: 'inherit'
+                }}
+              />
+            </div>
+
+            <button 
+               onClick={handleAuditarBiblios} 
+               disabled={bibliosLoading}
+               style={{
+                 background: '#059669', color: 'white', border: 'none', borderRadius: 8, padding: '12px',
+                 fontWeight: 700, cursor: bibliosLoading ? 'wait' : 'pointer', opacity: bibliosLoading ? 0.7 : 1,
+                 display: 'flex', justifyContent: 'center', alignItems: 'center', gap: 8, boxShadow: '0 2px 6px rgba(5, 150, 105, 0.2)'
+               }}
+            >
+               {bibliosLoading ? (
+                 <><span>⏳</span> Auditando...</>
+               ) : (
+                 <><span>🔍</span> {bibliosScope === 'nodo' ? 'Auditar Nota' : (bibliosScope === 'carpeta' ? 'Auditar Carpeta' : 'Auditar Grafo')}</>
+               )}
+            </button>
+
+            {bibliosSessions.length === 0 && !bibliosLoading && (
+              <div style={{ textAlign: 'center', opacity: .5, fontSize: 13, marginTop: 20, color: 'var(--sepia-text)' }}>
+                No hay auditorías previas para esta nota.<br/>¡Escribe algo y pídele a Biblios que lo revise!
+              </div>
+            )}
+
+            {bibliosSessions.map((session, i) => (
+              <div key={session.id} style={{ background: 'var(--sepia-bg)', padding: 16, borderRadius: 12, border: '1px solid var(--sepia-border)', fontSize: 13, color: 'var(--sepia-text)', boxShadow: '0 2px 8px rgba(0,0,0,0.04)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                  <span style={{ fontWeight: 800, color: '#059669' }}>Auditoría #{bibliosSessions.length - i}</span>
+                  <span style={{ fontSize: 11, opacity: 0.6 }}>{new Date(session.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                </div>
+                
+                <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+                  <div style={{ flex: 1, background: 'rgba(5, 150, 105, 0.05)', padding: '10px 6px', borderRadius: 8, textAlign: 'center', border: '1px solid rgba(5, 150, 105, 0.1)' }}>
+                    <div style={{ fontSize: 10, opacity: 0.7, textTransform: 'uppercase', fontWeight: 600 }}>Ortografía</div>
+                    <div style={{ fontSize: 20, fontWeight: 900, color: session.orthography_score >= 90 ? '#10B981' : (session.orthography_score >= 70 ? '#F59E0B' : '#EF4444') }}>{session.orthography_score}/100</div>
+                  </div>
+                  <div style={{ flex: 1, background: 'rgba(5, 150, 105, 0.05)', padding: '10px 6px', borderRadius: 8, textAlign: 'center', border: '1px solid rgba(5, 150, 105, 0.1)' }}>
+                    <div style={{ fontSize: 10, opacity: 0.7, textTransform: 'uppercase', fontWeight: 600 }}>Coherencia</div>
+                    <div style={{ fontSize: 20, fontWeight: 900, color: session.coherence_score >= 90 ? '#10B981' : (session.coherence_score >= 70 ? '#F59E0B' : '#EF4444') }}>{session.coherence_score}/100</div>
+                  </div>
+                </div>
+
+                {session.comparacion_anterior && (
+                  <div style={{ marginBottom: 12, padding: 10, background: 'rgba(5, 150, 105, 0.1)', borderRadius: 8, borderLeft: '3px solid #059669' }}>
+                    <div style={{ fontSize: 11, fontWeight: 800, color: '#059669', marginBottom: 4 }}>📈 PROGRESO</div>
+                    {session.comparacion_anterior}
+                  </div>
+                )}
+                
+                {session.target_type ? (
+                  <>
+                    {session.feedback_global && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.7, marginBottom: 4 }}>🌍 FEEDBACK GLOBAL</div>
+                        {session.feedback_global}
+                      </div>
+                    )}
+                    {(() => {
+                      try {
+                        const nodos = JSON.parse(session.feedback_nodos || '[]');
+                        if (nodos.length > 0) {
+                          return (
+                            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--sepia-border)' }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, color: '#F59E0B', marginBottom: 8 }}>🔗 OBSERVACIONES POR NODO</div>
+                              <ul style={{ paddingLeft: 16, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {nodos.map((o:any, j:number) => {
+                                  const title = notes.find(n => n.id === o.id_nodo)?.title || o.id_nodo;
+                                  return (
+                                    <li key={j} style={{ lineHeight: 1.4 }}>
+                                      <strong style={{ color: 'var(--sepia-text)' }}>{title}:</strong> <span style={{ opacity: 0.8 }}>{o.observacion}</span>
+                                    </li>
+                                  )
+                                })}
+                              </ul>
+                            </div>
+                          )
+                        }
+                      } catch(e) {}
+                      return null;
+                    })()}
+                  </>
+                ) : (
+                  <>
+                    {session.feedback_coherencia && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.7, marginBottom: 4 }}>🧠 COHERENCIA</div>
+                        {session.feedback_coherencia}
+                      </div>
+                    )}
+                    
+                    {session.feedback_mejoras && (
+                      <div style={{ marginBottom: 12 }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, opacity: 0.7, marginBottom: 4 }}>✍️ REDACCIÓN</div>
+                        {session.feedback_mejoras}
+                      </div>
+                    )}
+                    
+                    {(() => {
+                      try {
+                        const ort = JSON.parse(session.feedback_ortografia || '[]');
+                        if (ort.length > 0) {
+                          return (
+                            <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--sepia-border)' }}>
+                              <div style={{ fontSize: 11, fontWeight: 800, color: '#EF4444', marginBottom: 8 }}>🚨 ERRORES ENCONTRADOS</div>
+                              <ul style={{ paddingLeft: 16, margin: 0, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                                {ort.map((o:any, j:number) => (
+                                  <li key={j} style={{ lineHeight: 1.4 }}>
+                                    <del style={{ color: '#EF4444', fontWeight: 600 }}>{o.error}</del> → <span style={{ color: '#10B981', fontWeight: 600 }}>{o.correccion}</span>
+                                    <div style={{ opacity: 0.7, fontSize: 11, marginTop: 2 }}>{o.razon}</div>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )
+                        }
+                      } catch(e) {}
+                      return null;
+                    })()}
+                  </>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}

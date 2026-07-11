@@ -742,3 +742,66 @@ class CerebroEnlace(Base):
 
     def __repr__(self) -> str:
         return f"<CerebroEnlace {self.source_id} -> {self.target_id}>"
+
+# ──────────────────────────────────────────────
+# BibliosSession — Historial de auditorías (Biblios)
+# ──────────────────────────────────────────────
+class BibliosSession(Base):
+    __tablename__ = "biblios_sessions"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    nota_id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("cerebro_notas.id", ondelete="CASCADE"), nullable=False
+    )
+    usuario_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("usuarios.id"), nullable=True
+    )
+    original_text: Mapped[str] = mapped_column(Text, nullable=False)
+    coherence_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    orthography_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    feedback_ortografia: Mapped[str] = mapped_column(Text, nullable=False, default="[]") # JSON list
+    feedback_coherencia: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    feedback_mejoras: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    comparacion_anterior: Mapped[str] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_biblios_nota", "nota_id"),
+        Index("ix_biblios_usuario", "usuario_id"),
+    )
+
+    def __repr__(self) -> str:
+        return f"<BibliosSession {self.id}>"
+
+# ──────────────────────────────────────────────
+# BibliosMacroSession — Historial de auditorías Macro (Carpetas/Grafos)
+# ──────────────────────────────────────────────
+class BibliosMacroSession(Base):
+    __tablename__ = "biblios_macro_sessions"
+
+    id: Mapped[str] = mapped_column(
+        UUID(as_uuid=False), primary_key=True, default=lambda: str(uuid4())
+    )
+    usuario_id: Mapped[Optional[str]] = mapped_column(
+        UUID(as_uuid=False), ForeignKey("usuarios.id"), nullable=True
+    )
+    target_type: Mapped[str] = mapped_column(Text, nullable=False) # 'carpeta' o 'grafo'
+    target_id: Mapped[str] = mapped_column(Text, nullable=False) # ruta de la carpeta o 'all'
+    
+    coherence_score: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    feedback_global: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    feedback_nodos: Mapped[str] = mapped_column(Text, nullable=False, default="[]") # JSON con observaciones por nodo
+    comparacion_anterior: Mapped[str] = mapped_column(Text, nullable=True)
+    
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
+    )
+
+    __table_args__ = (
+        Index("ix_biblios_macro_target", "target_type", "target_id"),
+        Index("ix_biblios_macro_usuario", "usuario_id"),
+    )

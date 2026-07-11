@@ -126,6 +126,7 @@ GeoMathos no es solo un lienzo de dibujo, es un **potenciador del pensamiento ma
 - **Persistencia en PostgreSQL:** Sincronización automática con el backend con limpieza y `keepalive` en cierre o navegación, garantizando 100% retención de grafos.
 - **Ikaro integrado como asistente contextual:** Botón 🤖 en la barra del Cerebro abre un panel lateral donde Ikaro recibe automáticamente el contenido de la nota activa como contexto.
 - **Gestión de Conocimiento:** Interfaz integrada en el explorador lateral para eliminar notas individuales y carpetas completas (de forma recursiva), limpiando automáticamente los enlaces huérfanos.
+- **Biblios Macro-Análisis:** Auditoría recursiva por nodo, por carpeta o en todo el grafo simultáneamente con soporte para instrucciones personalizadas en lenguaje natural.
 - **Exportación ZIP/Markdown:** Botón para exportar todo el grafo de conocimiento como `.zip` con un `.md` por nota, compatible con Obsidian.
 
 ### Libro de Errores

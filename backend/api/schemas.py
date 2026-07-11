@@ -279,3 +279,35 @@ class CerebroEnlaceResponse(BaseModel):
 class CerebroSyncRequest(BaseModel):
     notas: list[CerebroNotaCreate]
     enlaces: list[CerebroEnlaceCreate]
+
+# ──────────────────────────────────────────────
+# BIBLIOS
+# ──────────────────────────────────────────────
+class BibliosSessionResponse(BaseModel):
+    id: str
+    nota_id: str
+    original_text: str
+    coherence_score: int
+    orthography_score: int
+    feedback_ortografia: str
+    feedback_coherencia: str
+    feedback_mejoras: str
+    comparacion_anterior: str | None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+class BibliosMacroSessionResponse(BaseModel):
+    id: str
+    usuario_id: Optional[str]
+    target_type: str
+    target_id: str
+    coherence_score: int
+    feedback_global: str
+    feedback_nodos: str
+    comparacion_anterior: Optional[str]
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
